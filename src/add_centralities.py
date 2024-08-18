@@ -119,3 +119,5 @@ def add_centralities(df, new_path, graph_path, dataset, cn_measures, network_fea
 
     df.to_parquet(new_path)
     print(f"DataFrame written to {new_path}")
+
+    return network_features

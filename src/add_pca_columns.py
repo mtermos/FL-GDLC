@@ -198,7 +198,7 @@ def process_clients_with_grouped_pca(feature_groups, output_folder, n_components
             columns=[f'pca_{i+1}' for i in range(n_components)]), global_pca_df], axis=1)
 
         output_path = os.path.join(
-            output_folder, f'{os.path.basename(client_path).split(".")[0]}_global_pca.parquet')
+            output_folder, f'{os.path.basename(client_path).split(".")[0]}.parquet')
         final_df.to_parquet(output_path)
         print(
             f'Processed federated PCA for client {client_path}, saved to {output_path}')
@@ -220,7 +220,7 @@ def process_clients_with_grouped_pca(feature_groups, output_folder, n_components
     return {
         'reconstruction_errors_local': reconstruction_errors_local,
         'reconstruction_errors_federated': reconstruction_errors_federated,
-    }
+    }, pca_columns
 
 
 def evaluate_pca_results(clients_paths):
