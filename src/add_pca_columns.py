@@ -84,7 +84,7 @@ def process_clients_with_pca(clients_paths, cn_measures_type_1, cn_measures_type
         centrality_data_pca_df = apply_global_pca(
             df, client_cn_measures, local_means[i], local_scales[i], principal_components)
         df_pca = pd.concat(
-            [df.drop(columns=client_cn_measures), centrality_data_pca_df], axis=1)
+            [df, centrality_data_pca_df], axis=1)
         if i < len(clients_paths) - 1:
             output_path = os.path.join(
                 output_folder, f'client_{i}_pca.parquet')
@@ -173,7 +173,7 @@ def process_clients_with_grouped_pca(feature_groups, output_folder, n_components
             local_pca_df = pd.DataFrame(
                 centrality_data_pca, columns=pca_columns, index=df.index)
             df = pd.concat(
-                [df.drop(columns=client_cn_measures), local_pca_df], axis=1)
+                [df, local_pca_df], axis=1)
 
             client_dfs[client_path] = df
 
