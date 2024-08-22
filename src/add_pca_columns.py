@@ -119,7 +119,7 @@ def process_clients_with_pca(clients_paths, cn_measures_type_1, cn_measures_type
     plt.show()
 
 
-def process_clients_with_grouped_pca(feature_groups, output_folder, n_components=2):
+def process_clients_with_grouped_pca(feature_groups, output_folder, n_components=2, client_cn_measures=None):
     def calculate_local_pca(df, cn_measures, n_components=2):
         centrality_data = df[cn_measures].fillna(0)
         scaler = StandardScaler()
@@ -153,8 +153,9 @@ def process_clients_with_grouped_pca(feature_groups, output_folder, n_components
     for group_id, (unique_feature_set, clients) in enumerate(feature_groups.items(), 1):
         for client_path in clients:
             df = pd.read_parquet(client_path)
-            client_cn_measures = [
-                measure for measure in unique_feature_set if measure in df.columns]
+            if not client_cn_measures:
+                client_cn_measures = [
+                    measure for measure in unique_feature_set if measure in df.columns]
             if len(client_cn_measures) == 0:
                 print(f"No centrality measures found in client {client_path}.")
                 continue
