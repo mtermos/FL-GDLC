@@ -181,15 +181,22 @@ def process_clients_with_grouped_pca(feature_groups, output_folder, n_components
     global_principal_components = apply_global_pca(local_covariances)
 
     global_explained_variances = {}
+    scaler_post_pca = StandardScaler()  # Post-standardization scaler
 
     for client_path, df in client_dfs.items():
         local_pca_data = df[[f'pca_{i+1}' for i in range(n_components)]].values
 
+        # Apply global PCA
         global_pca_transformed = np.dot(
             local_pca_data, global_principal_components)
+
+        # Post-standardization of global PCA-transformed data
+        global_pca_transformed_std = scaler_post_pca.fit_transform(
+            global_pca_transformed)
+
         pca_columns = [f'global_pca_{j+1}' for j in range(n_components)]
         global_pca_df = pd.DataFrame(
-            global_pca_transformed, columns=pca_columns, index=df.index)
+            global_pca_transformed_std, columns=pca_columns, index=df.index)
 
         explained_variance = np.var(global_pca_df.values, axis=0)
         explained_variance /= np.sum(explained_variance)
@@ -208,10 +215,16 @@ def process_clients_with_grouped_pca(feature_groups, output_folder, n_components
 
         local_reconstructed = np.dot(
             local_pca_data, global_principal_components.T)
+
+        # Post-standardize local reconstructed data
+        local_reconstructed_std = scaler_post_pca.transform(
+            local_reconstructed)
+
+        # Calculate reconstruction errors on standardized data
         reconstruction_errors_local[client_path] = mean_squared_error(
-            local_pca_data, local_reconstructed)
+            scaler_post_pca.transform(local_pca_data), local_reconstructed_std)
         reconstruction_errors_federated[client_path] = mean_squared_error(
-            local_pca_data, global_pca_transformed)
+            scaler_post_pca.transform(local_pca_data), global_pca_transformed_std)
 
         print(
             f"Client {client_path} Local PCA Reconstruction Error: {reconstruction_errors_local[client_path]}")
