@@ -121,7 +121,14 @@ def process_clients_with_pca(clients_paths, cn_measures_type_1, cn_measures_type
 
 def process_clients_with_grouped_pca(feature_groups, output_folder, n_components=2, client_cn_measures=None):
     def calculate_local_pca(df, cn_measures, n_components=2):
-        centrality_data = df[cn_measures].fillna(0)
+        existing_measures = [
+            measure for measure in cn_measures if measure in df.columns]
+
+        if not existing_measures:
+            raise ValueError(
+                "No valid centrality measures found in DataFrame columns.")
+
+        centrality_data = df[existing_measures].fillna(0)
         scaler = StandardScaler()
         centrality_data_std = scaler.fit_transform(centrality_data)
         pca = PCA(n_components=n_components)
@@ -152,10 +159,13 @@ def process_clients_with_grouped_pca(feature_groups, output_folder, n_components
 
     for group_id, (unique_feature_set, clients) in enumerate(feature_groups.items(), 1):
         for client_path in clients:
+            print(client_path)
             df = pd.read_parquet(client_path)
-            if not client_cn_measures:
-                client_cn_measures = [
-                    measure for measure in unique_feature_set if measure in df.columns]
+
+            client_cn_measures = [
+                measure for measure in unique_feature_set if measure in df.columns
+            ]
+
             if len(client_cn_measures) == 0:
                 print(f"No centrality measures found in client {client_path}.")
                 continue
@@ -181,16 +191,14 @@ def process_clients_with_grouped_pca(feature_groups, output_folder, n_components
     global_principal_components = apply_global_pca(local_covariances)
 
     global_explained_variances = {}
-    scaler_post_pca = StandardScaler()  # Post-standardization scaler
+    scaler_post_pca = StandardScaler()
 
     for client_path, df in client_dfs.items():
         local_pca_data = df[[f'pca_{i+1}' for i in range(n_components)]].values
 
-        # Apply global PCA
         global_pca_transformed = np.dot(
             local_pca_data, global_principal_components)
 
-        # Post-standardization of global PCA-transformed data
         global_pca_transformed_std = scaler_post_pca.fit_transform(
             global_pca_transformed)
 
@@ -216,11 +224,9 @@ def process_clients_with_grouped_pca(feature_groups, output_folder, n_components
         local_reconstructed = np.dot(
             local_pca_data, global_principal_components.T)
 
-        # Post-standardize local reconstructed data
         local_reconstructed_std = scaler_post_pca.transform(
             local_reconstructed)
 
-        # Calculate reconstruction errors on standardized data
         reconstruction_errors_local[client_path] = mean_squared_error(
             scaler_post_pca.transform(local_pca_data), local_reconstructed_std)
         reconstruction_errors_federated[client_path] = mean_squared_error(
@@ -301,3 +307,123 @@ def evaluate_pca_results(clients_paths):
         print(f"CV Recall: {np.mean(cv_recall)} (+/- {np.std(cv_recall)})")
         print(f"CV F1 Score: {np.mean(cv_f1)} (+/- {np.std(cv_f1)})")
         print("\n" + "="*50 + "\n")
+
+
+def process_clients_with_grouped_pca_rmse(feature_groups, output_folder, n_components=2, client_cn_measures=None):
+    def calculate_local_pca(df, cn_measures, n_components=2):
+        existing_measures = [
+            measure for measure in cn_measures if measure in df.columns]
+
+        if not existing_measures:
+            raise ValueError(
+                "No valid centrality measures found in DataFrame columns.")
+
+        centrality_data = df[existing_measures].fillna(0)
+        scaler = StandardScaler()
+        centrality_data_std = scaler.fit_transform(centrality_data)
+        pca = PCA(n_components=n_components)
+        centrality_data_pca = pca.fit_transform(centrality_data_std)
+        explained_variance = pca.explained_variance_ratio_
+        return centrality_data_pca, explained_variance, scaler.mean_, scaler.scale_, pca.components_
+
+    def calculate_local_covariance(pca_results):
+        return np.cov(pca_results, rowvar=False)
+
+    def apply_global_pca(local_covariances):
+        global_covariance_matrix = np.mean(local_covariances, axis=0)
+        eigen_values, eigen_vectors = np.linalg.eigh(global_covariance_matrix)
+        sorted_indices = np.argsort(eigen_values)[::-1]
+        global_principal_components = eigen_vectors[:,
+                                                    sorted_indices][:, :n_components]
+        return global_principal_components
+
+    os.makedirs(output_folder, exist_ok=True)
+
+    all_local_pca_results = []
+    local_covariances = []
+    client_dfs = {}
+    local_explained_variances = {}
+
+    reconstruction_errors_local = {}
+    reconstruction_errors_federated = {}
+
+    for group_id, (unique_feature_set, clients) in enumerate(feature_groups.items(), 1):
+        for client_path in clients:
+            print(client_path)
+            df = pd.read_parquet(client_path)
+
+            client_cn_measures = [
+                measure for measure in unique_feature_set if measure in df.columns
+            ]
+
+            if len(client_cn_measures) == 0:
+                print(f"No centrality measures found in client {client_path}.")
+                continue
+
+            centrality_data_pca, explained_variance, mean, scale, pca_components = calculate_local_pca(
+                df, client_cn_measures, n_components)
+            all_local_pca_results.append(centrality_data_pca)
+
+            local_explained_variances[client_path] = explained_variance
+
+            local_covariance_matrix = calculate_local_covariance(
+                centrality_data_pca)
+            local_covariances.append(local_covariance_matrix)
+
+            pca_columns = [f'pca_{i+1}' for i in range(n_components)]
+            local_pca_df = pd.DataFrame(
+                centrality_data_pca, columns=pca_columns, index=df.index)
+            df = pd.concat([df, local_pca_df], axis=1)
+
+            client_dfs[client_path] = df
+
+    global_principal_components = apply_global_pca(local_covariances)
+
+    global_explained_variances = {}
+    scaler_post_pca = StandardScaler()  #
+
+    for client_path, df in client_dfs.items():
+        local_pca_data = df[[f'pca_{i+1}' for i in range(n_components)]].values
+
+        global_pca_transformed = np.dot(
+            local_pca_data, global_principal_components)
+
+        global_pca_transformed_std = scaler_post_pca.fit_transform(
+            global_pca_transformed)
+
+        pca_columns = [f'global_pca_{j+1}' for j in range(n_components)]
+        global_pca_df = pd.DataFrame(
+            global_pca_transformed_std, columns=pca_columns, index=df.index)
+
+        final_df = pd.concat([df.drop(
+            columns=[f'pca_{i+1}' for i in range(n_components)]), global_pca_df], axis=1)
+
+        output_path = os.path.join(
+            output_folder, f'{os.path.basename(client_path).split(".")[0]}.parquet')
+        final_df.to_parquet(output_path)
+        print(
+            f'Processed federated PCA for client {client_path}, saved to {output_path}')
+
+        client_dfs[client_path] = final_df
+
+        local_reconstructed = np.dot(
+            local_pca_data, global_principal_components.T)
+
+        local_reconstructed_std = scaler_post_pca.transform(
+            local_reconstructed)
+
+        rmse_local = np.sqrt(mean_squared_error(
+            scaler_post_pca.transform(local_pca_data), local_reconstructed_std))
+        rmse_federated = np.sqrt(mean_squared_error(
+            scaler_post_pca.transform(local_pca_data), global_pca_transformed_std))
+
+        reconstruction_errors_local[client_path] = rmse_local
+        reconstruction_errors_federated[client_path] = rmse_federated
+
+        print(f"Client {client_path} Local PCA RMSE: {rmse_local}")
+        print(f"Client {client_path} Federated PCA RMSE: {rmse_federated}")
+
+    return {
+        'reconstruction_errors_local': reconstruction_errors_local,
+        'reconstruction_errors_federated': reconstruction_errors_federated,
+    }, pca_columns
