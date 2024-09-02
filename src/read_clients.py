@@ -46,7 +46,8 @@ def read_clients(folder_path, clients_paths, label_col, class_col, class_num_col
         if multi_class:
             cdata[label_col] = cdata[class_num_col]
 
-        cdata.drop(centralities_columns[i], axis=1, inplace=True)
+        if centralities_columns:
+            cdata.drop(centralities_columns[i], axis=1, inplace=True)
         if pca_columns:
             cdata.drop(pca_columns, axis=1, inplace=True)
 
